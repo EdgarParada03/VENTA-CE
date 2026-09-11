@@ -41,11 +41,6 @@ with st.container():
         """,
         unsafe_allow_html=True,
     )
-    imagen_encabezado = st.file_uploader(
-        "Imagen del encabezado (opcional)", type=["png", "jpg", "jpeg"], key="imagen_encabezado"
-    )
-    if imagen_encabezado is not None:
-        st.image(imagen_encabezado, width=180)
 st.markdown("---")
 
 if "mostrar_desglose" not in st.session_state:
