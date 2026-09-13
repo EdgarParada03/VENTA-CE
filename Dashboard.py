@@ -5,6 +5,7 @@ import plotly.graph_objects as go
 from fpdf import FPDF
 import tempfile
 import os
+import base64
 from io import BytesIO
 
 # 1. Configuracion institucional
@@ -13,32 +14,131 @@ st.set_page_config(page_title="Proyección Comercial CE", layout="wide")
 COLOR_ACTUAL = "#7F8C8D" 
 COLOR_CE = "#27AE60"     
 
+# Imagen institucional definida en el codigo, no cargada por el usuario.
+RUTA_IMAGEN_TITULO = os.path.join(os.path.dirname(__file__), "LogoCENS.png")
+with open(RUTA_IMAGEN_TITULO, "rb") as archivo_imagen:
+    IMAGEN_TITULO = base64.b64encode(archivo_imagen.read()).decode("ascii")
+
 with st.container():
     st.markdown(
         """
         <style>
+        :root {
+            --verde-cens: #27AE60;
+            --verde-oscuro-cens: #145A32;
+            --verde-claro-cens: #E8F5E9;
+            --gris-fondo-cens: #F4F6F5;
+            --gris-borde-cens: #DDE5E0;
+        }
+        .stApp {
+            background: linear-gradient(135deg, #FFFFFF 0%, var(--gris-fondo-cens) 100%);
+        }
+        .block-container {
+            padding-top: 2rem;
+            padding-bottom: 3rem;
+        }
         .encabezado-app {
-            background-color: #E8F5E9;
-            border-left: 8px solid #27AE60;
-            border-radius: 8px;
-            padding: 20px 28px;
-            margin-bottom: 12px;
+            align-items: center;
+            background: linear-gradient(110deg, #FFFFFF 0%, var(--verde-claro-cens) 100%);
+            border: 1px solid #CFE7D5;
+            border-right: 8px solid var(--verde-cens);
+            border-radius: 14px;
+            box-shadow: 0 8px 24px rgba(20, 90, 50, 0.08);
+            display: flex;
+            gap: 18px;
+            justify-content: space-between;
+            margin-bottom: 20px;
+            min-height: 142px;
+            padding: 24px 30px;
+        }
+        .encabezado-app img {
+            flex: 0 0 auto;
+            height: 94px;
+            object-fit: contain;
+            order: 2;
+            width: 94px;
+        }
+        .encabezado-app-contenido {
+            min-width: 0;
+            order: 1;
         }
         .encabezado-app h1 {
-            color: #145A32;
+            color: var(--verde-oscuro-cens);
+            font-size: clamp(1.8rem, 3vw, 2.7rem);
+            line-height: 1.12;
             margin: 0;
         }
         .encabezado-app p {
             color: #1B4332;
-            margin: 8px 0 0;
+            margin: 12px 0 0;
             font-size: 1.05rem;
+        }
+        h2, h3 {
+            color: var(--verde-oscuro-cens);
+        }
+        hr {
+            border-color: var(--gris-borde-cens);
+            margin: 1.5rem 0;
+        }
+        [data-testid="stMetric"] {
+            background: #FFFFFF;
+            border: 1px solid var(--gris-borde-cens);
+            border-left: 4px solid var(--verde-cens);
+            border-radius: 10px;
+            box-shadow: 0 4px 14px rgba(34, 64, 48, 0.06);
+            padding: 16px 18px;
+        }
+        [data-testid="stMetricLabel"] {
+            color: #5D6D64;
+        }
+        [data-testid="stSidebar"] {
+            background: #F1F4F2;
+            border-right: 1px solid var(--gris-borde-cens);
+        }
+        [data-testid="stSidebar"] h2,
+        [data-testid="stSidebar"] h3 {
+            color: var(--verde-oscuro-cens);
+        }
+        .stButton > button,
+        .stDownloadButton > button {
+            background-color: var(--verde-cens);
+            border: 1px solid var(--verde-cens);
+            border-radius: 8px;
+            color: #FFFFFF;
+            font-weight: 600;
+        }
+        .stButton > button:hover,
+        .stDownloadButton > button:hover {
+            background-color: var(--verde-oscuro-cens);
+            border-color: var(--verde-oscuro-cens);
+            color: #FFFFFF;
+        }
+        @media (max-width: 640px) {
+            .encabezado-app {
+                align-items: flex-start;
+                min-height: 0;
+                padding: 20px;
+            }
+            .encabezado-app img {
+                height: 68px;
+                width: 68px;
+            }
+            .encabezado-app h1 {
+                font-size: 1.65rem;
+            }
+            .encabezado-app p {
+                font-size: 0.95rem;
+            }
         }
         </style>
         <div class="encabezado-app">
-            <h1>Proyección Comercial: Beneficios de la Comunidad Energética</h1>
-            <p>Simulación dinámica semestral y análisis financiero de ahorros.</p>
+            <img src="data:image/png;base64,{IMAGEN_TITULO}" alt="Logo CENS">
+            <div class="encabezado-app-contenido">
+                <h1>Proyección Comercial: Beneficios de la Comunidad Energética</h1>
+                <p>Simulación dinámica semestral y análisis financiero de ahorros.</p>
+            </div>
         </div>
-        """,
+        """.replace("{IMAGEN_TITULO}", IMAGEN_TITULO),
         unsafe_allow_html=True,
     )
 st.markdown("---")
@@ -63,9 +163,14 @@ if "datos_mensuales" not in st.session_state:
     st.session_state.datos_mensuales = datos_mensuales_predeterminados.copy()
 if "archivo_excel_cargado" not in st.session_state:
     st.session_state.archivo_excel_cargado = None
+if "mostrar_editor_manual" not in st.session_state:
+    st.session_state.mostrar_editor_manual = False
 
 def toggle_desglose():
     st.session_state.mostrar_desglose = not st.session_state.mostrar_desglose
+
+def toggle_editor_manual():
+    st.session_state.mostrar_editor_manual = not st.session_state.mostrar_editor_manual
 
 # 2. Panel lateral para el ingreso de datos
 with st.sidebar:
@@ -109,28 +214,37 @@ with st.sidebar:
         mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
     )
 
-    editor_key = f"editor_mensual_{st.session_state.archivo_excel_cargado or 'manual'}"
-    datos_editados = st.data_editor(
-        st.session_state.datos_mensuales,
-        hide_index=True,
+    st.button(
+        "Ingresar valores manualmente" if not st.session_state.mostrar_editor_manual else "Ocultar ingreso manual",
+        on_click=toggle_editor_manual,
         use_container_width=True,
-        num_rows="fixed",
-        column_config={
-            "Consumo_kWh": st.column_config.NumberColumn("Consumo (kWh)", min_value=0.0),
-            "Tarifa_Aplicada_COP_kWh": st.column_config.NumberColumn("Tarifa aplicada (COP/kWh)", min_value=0.0),
-            "Tarifa_CE_COP_kWh": st.column_config.NumberColumn("Tarifa CE (COP/kWh)", min_value=0.0),
-            "Cobertura_CE_pct": st.column_config.NumberColumn("Cobertura CE (%)", min_value=0.0, max_value=100.0),
-            "Alumbrado_Publico_pct": st.column_config.NumberColumn("Alumbrado publico (%)", min_value=0.0, max_value=100.0),
-        },
-        key=editor_key,
+        type="primary",
     )
-    columnas_numericas = columnas_mensuales[1:]
-    for columna in columnas_numericas:
-        datos_editados[columna] = pd.to_numeric(datos_editados[columna], errors="coerce")
-    if datos_editados[columnas_numericas].isna().any().any() or (datos_editados[columnas_numericas] < 0).any().any():
-        st.error("Complete las cantidades y tarifas con valores numericos no negativos.")
-        datos_editados = st.session_state.datos_mensuales.copy()
-    st.session_state.datos_mensuales = datos_editados
+
+    if st.session_state.mostrar_editor_manual:
+        st.caption("Edite los valores de los seis meses directamente en la tabla.")
+        editor_key = f"editor_mensual_{st.session_state.archivo_excel_cargado or 'manual'}"
+        datos_editados = st.data_editor(
+            st.session_state.datos_mensuales,
+            hide_index=True,
+            use_container_width=True,
+            num_rows="fixed",
+            column_config={
+                "Consumo_kWh": st.column_config.NumberColumn("Consumo (kWh)", min_value=0.0),
+                "Tarifa_Aplicada_COP_kWh": st.column_config.NumberColumn("Tarifa aplicada (COP/kWh)", min_value=0.0),
+                "Tarifa_CE_COP_kWh": st.column_config.NumberColumn("Tarifa CE (COP/kWh)", min_value=0.0),
+                "Cobertura_CE_pct": st.column_config.NumberColumn("Cobertura CE (%)", min_value=0.0, max_value=100.0),
+                "Alumbrado_Publico_pct": st.column_config.NumberColumn("Alumbrado publico (%)", min_value=0.0, max_value=100.0),
+            },
+            key=editor_key,
+        )
+        columnas_numericas = columnas_mensuales[1:]
+        for columna in columnas_numericas:
+            datos_editados[columna] = pd.to_numeric(datos_editados[columna], errors="coerce")
+        if datos_editados[columnas_numericas].isna().any().any() or (datos_editados[columnas_numericas] < 0).any().any():
+            st.error("Complete las cantidades y tarifas con valores numericos no negativos.")
+            datos_editados = st.session_state.datos_mensuales.copy()
+        st.session_state.datos_mensuales = datos_editados
 
 # 3. Motor de Calculo Dinamico
 def calcular_mes(consumo, tarifa_aplicada, tarifa_ce, pct_cobertura, pct_alumbrado):
