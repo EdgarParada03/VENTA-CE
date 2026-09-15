@@ -148,7 +148,8 @@ if "mostrar_desglose" not in st.session_state:
 
 columnas_mensuales = [
     "Mes", "Consumo_kWh", "Tarifa_Aplicada_COP_kWh",
-    "Tarifa_CE_COP_kWh", "Cobertura_CE_pct", "Alumbrado_Publico_pct"
+    "Tarifa_CE_COP_kWh", "Cobertura_CE_pct", "Alumbrado_Publico_pct",
+    "Paga contribucion"
 ]
 datos_mensuales_predeterminados = pd.DataFrame({
     "Mes": [f"Mes {i}" for i in range(1, 7)],
@@ -157,6 +158,7 @@ datos_mensuales_predeterminados = pd.DataFrame({
     "Tarifa_CE_COP_kWh": [913.36] * 6,
     "Cobertura_CE_pct": [80.0] * 6,
     "Alumbrado_Publico_pct": [13.0] * 6,
+    "Paga contribucion": ["NO"] * 6,
 })
 
 if "datos_mensuales" not in st.session_state:
@@ -190,10 +192,16 @@ with st.sidebar:
                     st.error("El Excel debe contener exactamente seis filas, una por cada mes.")
                 else:
                     datos_excel = datos_excel[columnas_mensuales].copy()
+                    datos_excel["Paga contribucion"] = (
+                        datos_excel["Paga contribucion"].astype(str).str.strip().str.upper()
+                    )
                     columnas_numericas = columnas_mensuales[1:]
+                    columnas_numericas.remove("Paga contribucion")
                     for columna in columnas_numericas:
                         datos_excel[columna] = pd.to_numeric(datos_excel[columna], errors="coerce")
-                    if datos_excel[columnas_numericas].isna().any().any():
+                    if not datos_excel["Paga contribucion"].isin({"SI", "NO"}).all():
+                        st.error('La columna "Paga contribucion" solo puede contener SI o NO.')
+                    elif datos_excel[columnas_numericas].isna().any().any():
                         st.error("Las columnas numericas del Excel no pueden tener valores vacios o no numericos.")
                     elif (datos_excel[columnas_numericas] < 0).any().any():
                         st.error("Las cantidades y tarifas del Excel no pueden ser negativas.")
@@ -235,47 +243,79 @@ with st.sidebar:
                 "Tarifa_CE_COP_kWh": st.column_config.NumberColumn("Tarifa CE (COP/kWh)", min_value=0.0),
                 "Cobertura_CE_pct": st.column_config.NumberColumn("Cobertura CE (%)", min_value=0.0, max_value=100.0),
                 "Alumbrado_Publico_pct": st.column_config.NumberColumn("Alumbrado publico (%)", min_value=0.0, max_value=100.0),
+                "Paga contribucion": st.column_config.SelectboxColumn("Paga contribucion", options=["SI", "NO"], required=True),
             },
             key=editor_key,
         )
         columnas_numericas = columnas_mensuales[1:]
+        columnas_numericas.remove("Paga contribucion")
         for columna in columnas_numericas:
             datos_editados[columna] = pd.to_numeric(datos_editados[columna], errors="coerce")
-        if datos_editados[columnas_numericas].isna().any().any() or (datos_editados[columnas_numericas] < 0).any().any():
+        datos_editados["Paga contribucion"] = (
+            datos_editados["Paga contribucion"].astype(str).str.strip().str.upper()
+        )
+        if (
+            datos_editados[columnas_numericas].isna().any().any()
+            or (datos_editados[columnas_numericas] < 0).any().any()
+            or not datos_editados["Paga contribucion"].isin({"SI", "NO"}).all()
+        ):
             st.error("Complete las cantidades y tarifas con valores numericos no negativos.")
             datos_editados = st.session_state.datos_mensuales.copy()
         st.session_state.datos_mensuales = datos_editados
 
 # 3. Motor de Calculo Dinamico
-def calcular_mes(consumo, tarifa_aplicada, tarifa_ce, pct_cobertura, pct_alumbrado):
-    consumo_activa = consumo * tarifa_aplicada
+def calcular_mes(consumo, tarifa_aplicada, tarifa_ce, pct_cobertura, pct_alumbrado, paga_contribucion):
+    contribuye = paga_contribucion == "SI"
+    consumo_activa = consumo * tarifa_aplicada / 1.2 if contribuye else consumo * tarifa_aplicada
+    contribucion = consumo_activa * 0.2 if contribuye else 0.0
     alumbrado = consumo_activa * pct_alumbrado
-    total_actual = consumo_activa + alumbrado
-    
-    energia_asignada = consumo * pct_cobertura
-    compra_energia_asignada = - (energia_asignada * tarifa_aplicada)
-    cobro_energia_ce = energia_asignada * tarifa_ce
-    alumbrado_ce = alumbrado 
+    total_actual = consumo_activa + contribucion + alumbrado
 
-    total_ce = consumo_activa + compra_energia_asignada + cobro_energia_ce + alumbrado_ce
+    energia_asignada = consumo * pct_cobertura
+    compra_energia_asignada = -(energia_asignada * tarifa_aplicada)
+    cobro_energia_ce = (
+        consumo * pct_cobertura * tarifa_ce
+        if contribuye
+        else energia_asignada * tarifa_ce
+    )
+    consumo_activa_ce = consumo * tarifa_aplicada / 1.2 if contribuye else consumo_activa
+    compra_energia_ce = consumo * pct_cobertura * -(tarifa_aplicada / 1.2) if contribuye else 0.0
+    contribucion_ce = (consumo_activa_ce + compra_energia_ce) * 0.2 if contribuye else 0.0
+    alumbrado_ce = consumo_activa_ce * pct_alumbrado
+
+    total_ce = (
+        consumo_activa_ce + compra_energia_ce + cobro_energia_ce + contribucion_ce + alumbrado_ce
+        if contribuye
+        else consumo_activa + compra_energia_asignada + cobro_energia_ce + alumbrado_ce
+    )
     ahorro = total_actual - total_ce
     
     return {
         "Consumo": consumo,
         "Tarifa Aplicada": tarifa_aplicada,
         "Tarifa CE": tarifa_ce,
+        "Cobertura CE": pct_cobertura * 100,
+        "Paga contribucion": paga_contribucion,
         "Total Actual": total_actual,
         "Total CE": total_ce,
         "Ahorro": ahorro,
-        "Detalle Actual": [consumo_activa, 0.0, 0.0, 0.0, alumbrado, total_actual],
-        "Detalle CE": [consumo_activa, compra_energia_asignada, cobro_energia_ce, 0.0, alumbrado_ce, total_ce]
+        "Detalle Actual": [consumo_activa, 0.0, 0.0, contribucion, alumbrado, total_actual],
+        "Detalle CE": [
+            consumo_activa_ce,
+            compra_energia_asignada if not contribuye else compra_energia_ce,
+            cobro_energia_ce,
+            contribucion_ce,
+            alumbrado_ce,
+            total_ce,
+        ]
     }
 
 # Ejecución mensual
 resultados = [
     calcular_mes(
         fila["Consumo_kWh"], fila["Tarifa_Aplicada_COP_kWh"], fila["Tarifa_CE_COP_kWh"],
-        fila["Cobertura_CE_pct"] / 100.0, fila["Alumbrado_Publico_pct"] / 100.0
+        fila["Cobertura_CE_pct"] / 100.0, fila["Alumbrado_Publico_pct"] / 100.0,
+        fila["Paga contribucion"]
     )
     for _, fila in st.session_state.datos_mensuales.iterrows()
 ]
@@ -386,12 +426,12 @@ def generar_pdf(datos_mensuales, reduccion_tarifa_pdf, ahorro_total_pdf):
     pdf.cell(190, 10, "Resumen Tarifario y Proyeccion Mensual", ln=True)
     
     pdf.set_font("Arial", '', 12)
-    pdf.cell(190, 8, f"Tarifa Aplicada Promedio (con contribucion): ${tarifa_aplicada_pdf:,.2f} COP/kWh", ln=True)
-    pdf.cell(190, 8, f"Tarifa Comunidad Energetica: ${tarifa_ce_pdf:,.2f} COP/kWh", ln=True)
+    pdf.cell(190, 8, f"Tarifa Aplicada Promedio (con contribucion): ${tarifa_aplicada_pdf:,.0f} COP/kWh", ln=True)
+    pdf.cell(190, 8, f"Tarifa Comunidad Energetica: ${tarifa_ce_pdf:,.0f} COP/kWh", ln=True)
     
     pdf.set_font("Arial", 'B', 12)
     pdf.set_text_color(39, 174, 96)
-    pdf.cell(190, 8, f"Reduccion de la Tarifa: {reduccion_tarifa_pdf:.1f}%", ln=True)
+    pdf.cell(190, 8, f"Reduccion de la Tarifa: {reduccion_tarifa_pdf:.0f}%", ln=True)
     # Mostramos el ahorro del primer mes y el promedio de los 6 meses
     pdf.cell(190, 8, f"Ahorro Estimado (Mes 1): ${ahorro_mes_1:,.0f} COP", ln=True)
     pdf.cell(190, 8, f"Ahorro Promedio Mensual Estimado: ${promedio_ahorro_mensual:,.0f} COP", ln=True)
@@ -406,10 +446,11 @@ def generar_pdf(datos_mensuales, reduccion_tarifa_pdf, ahorro_total_pdf):
     pdf.set_text_color(0, 0, 0)
     pdf.set_font("Arial", 'B', 10)
     pdf.set_font("Arial", 'B', 7)
-    pdf.cell(18, 10, "Mes", border=1, align='C', fill=True)
-    pdf.cell(25, 10, "Consumo", border=1, align='C', fill=True)
-    pdf.cell(35, 10, "Tarifa aplicada", border=1, align='C', fill=True)
-    pdf.cell(30, 10, "Tarifa CE", border=1, align='C', fill=True)
+    pdf.cell(15, 10, "Mes", border=1, align='C', fill=True)
+    pdf.cell(22, 10, "Consumo", border=1, align='C', fill=True)
+    pdf.cell(27, 10, "Tarifa aplicada", border=1, align='C', fill=True)
+    pdf.cell(24, 10, "Tarifa CE", border=1, align='C', fill=True)
+    pdf.cell(20, 10, "Cobertura", border=1, align='C', fill=True)
     pdf.cell(27, 10, "Tradicional", border=1, align='C', fill=True)
     pdf.cell(27, 10, "Comunidad", border=1, align='C', fill=True)
     pdf.cell(28, 10, "Ahorro", border=1, align='C', fill=True)
@@ -418,10 +459,11 @@ def generar_pdf(datos_mensuales, reduccion_tarifa_pdf, ahorro_total_pdf):
     pdf.set_font("Arial", '', 10)
     for i, res in enumerate(datos_mensuales):
         pdf.set_text_color(0, 0, 0)
-        pdf.cell(18, 10, meses_labels[i], border=1, align='C')
-        pdf.cell(25, 10, f"{res['Consumo']:,.0f}", border=1, align='C')
-        pdf.cell(35, 10, f"${res['Tarifa Aplicada']:,.2f}", border=1, align='C')
-        pdf.cell(30, 10, f"${res['Tarifa CE']:,.2f}", border=1, align='C')
+        pdf.cell(15, 10, meses_labels[i], border=1, align='C')
+        pdf.cell(22, 10, f"{res['Consumo']:,.0f}", border=1, align='C')
+        pdf.cell(27, 10, f"${res['Tarifa Aplicada']:,.0f}", border=1, align='C')
+        pdf.cell(24, 10, f"${res['Tarifa CE']:,.0f}", border=1, align='C')
+        pdf.cell(20, 10, f"{res['Cobertura CE']:,.0f}%", border=1, align='C')
         pdf.cell(27, 10, f"${res['Total Actual']:,.0f}", border=1, align='C')
         pdf.cell(27, 10, f"${res['Total CE']:,.0f}", border=1, align='C')
         
@@ -456,7 +498,7 @@ with col_btn2:
 
 if st.session_state.mostrar_desglose:
     st.subheader("Análisis Detallado por Concepto (Estructura de Modelo)")
-    conceptos = ["Consumo Energía Activa", "Compra Energía Asignada CE (-)", "Cobro Energía Comunidad Energética", "Contribución (incluida en tarifa)", "Alumbrado Público", "TOTAL FACTURA"]
+    conceptos = ["Consumo Energía Activa", "Compra Energía Asignada CE (-)", "Cobro Energía Comunidad Energética", "Contribución", "Alumbrado Público", "TOTAL FACTURA"]
     def formato_moneda(lista): return [f"${val:,.0f}" for val in lista]
     
     df_desglose = pd.DataFrame({
