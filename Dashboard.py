@@ -383,9 +383,8 @@ col_graf1, col_graf2 = st.columns(2)
 
 with col_graf1:
     fig_lineas = go.Figure()
-    fig_lineas.add_trace(go.Scatter(x=meses_labels, y=facturas_sin_ce, name="Sin CE", line=dict(color=COLOR_ACTUAL, width=3, dash='dot'), mode='lines+markers'))
-    fig_lineas.add_trace(go.Scatter(x=meses_labels, y=facturas_con_ce, name="Con CE", line=dict(color=COLOR_CE, width=4), mode='lines+markers', fill='tonexty', fillcolor='rgba(39, 174, 96, 0.2)'))
-    fig_lineas.update_layout(title="Tendencia de Facturación", xaxis_title="Periodo", yaxis_title="Valor (COP)", hovermode="x unified", legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1))
+    fig_lineas.add_trace(go.Scatter(x=meses_labels, y=ahorros_mensuales, name="Ahorro por mes", line=dict(color=COLOR_CE, width=4), mode='lines+markers', fill='tozeroy', fillcolor='rgba(39, 174, 96, 0.2)', hovertemplate="<b>%{x}</b><br>Ahorro por mes: $%{y:,.0f} COP<extra></extra>"))
+    fig_lineas.update_layout(title="Ahorro por Mes", xaxis_title="Periodo", yaxis_title="Ahorro (COP)", hovermode="x unified", showlegend=False)
     st.plotly_chart(fig_lineas, use_container_width=True)
 
 with col_graf2:
@@ -427,7 +426,7 @@ def generar_pdf(datos_mensuales, reduccion_tarifa_pdf, ahorro_total_pdf):
     
     pdf.set_font("Arial", '', 12)
     pdf.cell(190, 8, f"Tarifa Aplicada Promedio (con contribucion): ${tarifa_aplicada_pdf:,.0f} COP/kWh", ln=True)
-    pdf.cell(190, 8, f"Tarifa Comunidad Energetica: ${tarifa_ce_pdf:,.0f} COP/kWh", ln=True)
+    pdf.cell(190, 8, f"Tarifa Promedio Comunidad Energetica: ${tarifa_ce_pdf:,.0f} COP/kWh", ln=True)
     
     pdf.set_font("Arial", 'B', 12)
     pdf.set_text_color(39, 174, 96)
