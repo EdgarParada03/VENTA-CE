@@ -7,6 +7,7 @@ import tempfile
 import os
 import base64
 from io import BytesIO
+from PIL import Image
 
 # 1. Configuracion institucional
 st.set_page_config(page_title="Proyección Comercial CE", layout="wide")
@@ -18,6 +19,7 @@ COLOR_CE = "#27AE60"
 RUTA_IMAGEN_TITULO = os.path.join(os.path.dirname(__file__), "LogoCENS.png")
 with open(RUTA_IMAGEN_TITULO, "rb") as archivo_imagen:
     IMAGEN_TITULO = base64.b64encode(archivo_imagen.read()).decode("ascii")
+RUTA_IMAGEN_SOLAR = os.path.join(os.path.dirname(__file__), "Planta Solar.jpg")
 
 with st.container():
     st.markdown(
@@ -149,10 +151,10 @@ if "mostrar_desglose" not in st.session_state:
 columnas_mensuales = [
     "Mes", "Consumo_kWh", "Tarifa_Aplicada_COP_kWh",
     "Tarifa_CE_COP_kWh", "Cobertura_CE_pct", "Alumbrado_Publico_pct",
-    "Paga contribucion"
+    "Paga contribucion",
 ]
 datos_mensuales_predeterminados = pd.DataFrame({
-    "Mes": [f"Mes {i}" for i in range(1, 7)],
+    "Mes": [f"Mes {indice}" for indice in range(1, 7)],
     "Consumo_kWh": [7000, 7200, 6900, 7100, 7300, 7000],
     "Tarifa_Aplicada_COP_kWh": [1043.93] * 6,
     "Tarifa_CE_COP_kWh": [913.36] * 6,
@@ -160,16 +162,16 @@ datos_mensuales_predeterminados = pd.DataFrame({
     "Alumbrado_Publico_pct": [13.0] * 6,
     "Paga contribucion": ["NO"] * 6,
 })
-
 if "datos_mensuales" not in st.session_state:
     st.session_state.datos_mensuales = datos_mensuales_predeterminados.copy()
 if "archivo_excel_cargado" not in st.session_state:
     st.session_state.archivo_excel_cargado = None
-if "mostrar_editor_manual" not in st.session_state:
-    st.session_state.mostrar_editor_manual = False
 
 def toggle_desglose():
     st.session_state.mostrar_desglose = not st.session_state.mostrar_desglose
+
+if "mostrar_editor_manual" not in st.session_state:
+    st.session_state.mostrar_editor_manual = False
 
 def toggle_editor_manual():
     st.session_state.mostrar_editor_manual = not st.session_state.mostrar_editor_manual
@@ -178,6 +180,8 @@ def toggle_editor_manual():
 with st.sidebar:
     st.header("Datos mensuales")
     st.caption("La tarifa aplicada debe incluir la contribución. El alumbrado se ingresa aparte.")
+    nombre_cliente = st.text_input("Nombre del Cliente / Razón Social")
+    dias_retiro = st.number_input("Días de preaviso para retiro", min_value=0, value=90, step=1)
     archivo_excel = st.file_uploader("Cargar Excel mensual", type=["xlsx", "xls"])
 
     if archivo_excel is not None:
@@ -192,9 +196,7 @@ with st.sidebar:
                     st.error("El Excel debe contener exactamente seis filas, una por cada mes.")
                 else:
                     datos_excel = datos_excel[columnas_mensuales].copy()
-                    datos_excel["Paga contribucion"] = (
-                        datos_excel["Paga contribucion"].astype(str).str.strip().str.upper()
-                    )
+                    datos_excel["Paga contribucion"] = datos_excel["Paga contribucion"].astype(str).str.strip().str.upper()
                     columnas_numericas = columnas_mensuales[1:]
                     columnas_numericas.remove("Paga contribucion")
                     for columna in columnas_numericas:
@@ -216,26 +218,20 @@ with st.sidebar:
     with pd.ExcelWriter(plantilla_excel, engine="openpyxl") as escritor:
         datos_mensuales_predeterminados.to_excel(escritor, index=False, sheet_name="Datos mensuales")
     st.download_button(
-        "Descargar plantilla Excel",
-        data=plantilla_excel.getvalue(),
+        "Descargar plantilla Excel", data=plantilla_excel.getvalue(),
         file_name="plantilla_datos_mensuales.xlsx",
         mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
     )
-
     st.button(
         "Ingresar valores manualmente" if not st.session_state.mostrar_editor_manual else "Ocultar ingreso manual",
-        on_click=toggle_editor_manual,
-        use_container_width=True,
-        type="primary",
+        on_click=toggle_editor_manual, width="stretch", type="primary",
     )
 
     if st.session_state.mostrar_editor_manual:
         st.caption("Edite los valores de los seis meses directamente en la tabla.")
         editor_key = f"editor_mensual_{st.session_state.archivo_excel_cargado or 'manual'}"
         datos_editados = st.data_editor(
-            st.session_state.datos_mensuales,
-            hide_index=True,
-            use_container_width=True,
+            st.session_state.datos_mensuales, hide_index=True, width="stretch",
             num_rows="fixed",
             column_config={
                 "Consumo_kWh": st.column_config.NumberColumn("Consumo (kWh)", min_value=0.0),
@@ -251,9 +247,7 @@ with st.sidebar:
         columnas_numericas.remove("Paga contribucion")
         for columna in columnas_numericas:
             datos_editados[columna] = pd.to_numeric(datos_editados[columna], errors="coerce")
-        datos_editados["Paga contribucion"] = (
-            datos_editados["Paga contribucion"].astype(str).str.strip().str.upper()
-        )
+        datos_editados["Paga contribucion"] = datos_editados["Paga contribucion"].astype(str).str.strip().str.upper()
         if (
             datos_editados[columnas_numericas].isna().any().any()
             or (datos_editados[columnas_numericas] < 0).any().any()
@@ -270,244 +264,402 @@ def calcular_mes(consumo, tarifa_aplicada, tarifa_ce, pct_cobertura, pct_alumbra
     contribucion = consumo_activa * 0.2 if contribuye else 0.0
     alumbrado = consumo_activa * pct_alumbrado
     total_actual = consumo_activa + contribucion + alumbrado
-
     energia_asignada = consumo * pct_cobertura
     compra_energia_asignada = -(energia_asignada * tarifa_aplicada)
-    cobro_energia_ce = (
-        consumo * pct_cobertura * tarifa_ce
-        if contribuye
-        else energia_asignada * tarifa_ce
-    )
+    cobro_energia_ce = consumo * pct_cobertura * tarifa_ce if contribuye else energia_asignada * tarifa_ce
     consumo_activa_ce = consumo * tarifa_aplicada / 1.2 if contribuye else consumo_activa
     compra_energia_ce = consumo * pct_cobertura * -(tarifa_aplicada / 1.2) if contribuye else 0.0
     contribucion_ce = (consumo_activa_ce + compra_energia_ce) * 0.2 if contribuye else 0.0
     alumbrado_ce = consumo_activa_ce * pct_alumbrado
-
     total_ce = (
         consumo_activa_ce + compra_energia_ce + cobro_energia_ce + contribucion_ce + alumbrado_ce
-        if contribuye
-        else consumo_activa + compra_energia_asignada + cobro_energia_ce + alumbrado_ce
+        if contribuye else consumo_activa + compra_energia_asignada + cobro_energia_ce + alumbrado_ce
     )
     ahorro = total_actual - total_ce
-    
     return {
-        "Consumo": consumo,
-        "Tarifa Aplicada": tarifa_aplicada,
-        "Tarifa CE": tarifa_ce,
-        "Cobertura CE": pct_cobertura * 100,
-        "Paga contribucion": paga_contribucion,
-        "Total Actual": total_actual,
-        "Total CE": total_ce,
-        "Ahorro": ahorro,
+        "Consumo": consumo, "Tarifa Aplicada": tarifa_aplicada, "Tarifa CE": tarifa_ce,
+        "Cobertura CE": pct_cobertura * 100, "Paga contribucion": paga_contribucion,
+        "Total Actual": total_actual, "Total CE": total_ce, "Ahorro": ahorro,
         "Detalle Actual": [consumo_activa, 0.0, 0.0, contribucion, alumbrado, total_actual],
         "Detalle CE": [
-            consumo_activa_ce,
-            compra_energia_asignada if not contribuye else compra_energia_ce,
-            cobro_energia_ce,
-            contribucion_ce,
-            alumbrado_ce,
-            total_ce,
-        ]
+            consumo_activa_ce, compra_energia_asignada if not contribuye else compra_energia_ce,
+            cobro_energia_ce, contribucion_ce, alumbrado_ce, total_ce,
+        ],
     }
 
-# Ejecución mensual
 resultados = [
     calcular_mes(
         fila["Consumo_kWh"], fila["Tarifa_Aplicada_COP_kWh"], fila["Tarifa_CE_COP_kWh"],
         fila["Cobertura_CE_pct"] / 100.0, fila["Alumbrado_Publico_pct"] / 100.0,
-        fila["Paga contribucion"]
+        fila["Paga contribucion"],
     )
     for _, fila in st.session_state.datos_mensuales.iterrows()
 ]
 meses_labels = st.session_state.datos_mensuales["Mes"].astype(str).tolist()
-
-facturas_sin_ce = [r["Total Actual"] for r in resultados]
-facturas_con_ce = [r["Total CE"] for r in resultados]
-ahorros_mensuales = [r["Ahorro"] for r in resultados]
+facturas_sin_ce = [resultado["Total Actual"] for resultado in resultados]
+facturas_con_ce = [resultado["Total CE"] for resultado in resultados]
+ahorros_mensuales = [resultado["Ahorro"] for resultado in resultados]
 
 total_semestre_sin_ce = sum(facturas_sin_ce)
 total_semestre_con_ce = sum(facturas_con_ce)
 total_ahorro_semestre = sum(ahorros_mensuales)
-valor_tarifa_aplicada = sum(r["Consumo"] * r["Tarifa Aplicada"] for r in resultados)
-valor_tarifa_ce = sum(r["Consumo"] * r["Tarifa CE"] for r in resultados)
-ahorro_tarifa_porcentual = ((valor_tarifa_aplicada - valor_tarifa_ce) / valor_tarifa_aplicada) * 100 if valor_tarifa_aplicada > 0 else 0
-ahorro_factura_porcentual = (total_ahorro_semestre / total_semestre_sin_ce) * 100 if total_semestre_sin_ce > 0 else 0
+valor_tarifa_aplicada = sum(resultado["Consumo"] * resultado["Tarifa Aplicada"] for resultado in resultados)
+valor_tarifa_ce = sum(resultado["Consumo"] * resultado["Tarifa CE"] for resultado in resultados)
+ahorro_tarifa_porcentual = (
+    (valor_tarifa_aplicada - valor_tarifa_ce) / valor_tarifa_aplicada * 100
+    if valor_tarifa_aplicada > 0 else 0
+)
+ahorro_factura_porcentual = (
+    total_ahorro_semestre / total_semestre_sin_ce * 100
+    if total_semestre_sin_ce > 0 else 0
+)
 
-# 4. Panel de Impacto Financiero
 st.subheader("Resumen de Impacto Semestral")
 col1, col2, col3, col4 = st.columns(4)
 with col1:
-    st.metric(label="Facturación Tradicional Proyectada", value=f"${total_semestre_sin_ce:,.0f}")
+    st.metric("Facturación Tradicional Proyectada", f"${total_semestre_sin_ce:,.0f}")
 with col2:
-    st.metric(label="Facturación con Comunidad Energética", value=f"${total_semestre_con_ce:,.0f}", delta=f"-${total_ahorro_semestre:,.0f}", delta_color="inverse")
+    st.metric(
+        "Facturación con Comunidad Energética", f"${total_semestre_con_ce:,.0f}",
+        delta=f"-${total_ahorro_semestre:,.0f}", delta_color="inverse",
+    )
 with col3:
-    st.metric(label="Ahorro sobre Tarifa", value=f"{ahorro_tarifa_porcentual:.1f}%")
+    st.metric("Ahorro sobre Tarifa", f"{ahorro_tarifa_porcentual:.1f}%")
 with col4:
-    st.metric(label="Ahorro sobre Factura", value=f"{ahorro_factura_porcentual:.1f}%")
+    st.metric("Ahorro sobre Factura", f"{ahorro_factura_porcentual:.1f}%")
 
 resultado_mes_1 = resultados[0]
 st.subheader(f"Resumen de Impacto Mensual - {meses_labels[0]}")
 mes1_col1, mes1_col2, mes1_col3, mes1_col4 = st.columns(4)
 with mes1_col1:
-    st.metric(label="Facturación Tradicional", value=f"${resultado_mes_1['Total Actual']:,.0f}")
+    st.metric("Facturación Tradicional", f"${resultado_mes_1['Total Actual']:,.0f}")
 with mes1_col2:
-    st.metric(label="Facturación con CE", value=f"${resultado_mes_1['Total CE']:,.0f}")
+    st.metric("Facturación con CE", f"${resultado_mes_1['Total CE']:,.0f}")
 with mes1_col3:
-    st.metric(label="Ahorro del Mes", value=f"${resultado_mes_1['Ahorro']:,.0f}")
+    st.metric("Ahorro del Mes", f"${resultado_mes_1['Ahorro']:,.0f}")
 with mes1_col4:
-    ahorro_mes_1_pct = (resultado_mes_1["Ahorro"] / resultado_mes_1["Total Actual"]) * 100 if resultado_mes_1["Total Actual"] > 0 else 0
-    st.metric(label="Ahorro sobre Factura", value=f"{ahorro_mes_1_pct:.1f}%")
+    ahorro_mes_1_pct = (
+        resultado_mes_1["Ahorro"] / resultado_mes_1["Total Actual"] * 100
+        if resultado_mes_1["Total Actual"] > 0 else 0
+    )
+    st.metric("Ahorro sobre Factura", f"{ahorro_mes_1_pct:.1f}%")
 
 st.markdown("---")
-
-# 5. Cuadros de Resumen Textual por Mes
 st.subheader("Historial de Consumo y Ahorro Mensual")
 cols = st.columns(3)
-for i, (res, label) in enumerate(zip(resultados, meses_labels)):
-    with cols[i % 3]:
+for indice, (resultado, etiqueta) in enumerate(zip(resultados, meses_labels)):
+    with cols[indice % 3]:
         st.success(
-            f"**{label}**\n\n"
-            f"Consumo: **{res['Consumo']:,.0f} kWh**\n\n"
-            f"Tarifa aplicada (con contribución): **${res['Tarifa Aplicada']:,.2f}/kWh**\n\n"
-            f"Tarifa CE: **${res['Tarifa CE']:,.2f}/kWh**\n\n"
-            f"Facturación Tradicional: **${res['Total Actual']:,.0f}**\n\n"
-            f"Facturación en CE: **${res['Total CE']:,.0f}**\n\n"
-            f"Ahorro del mes: **${res['Ahorro']:,.0f}**"
+            f"**{etiqueta}**\n\n"
+            f"Consumo: **{resultado['Consumo']:,.0f} kWh**\n\n"
+            f"Tarifa aplicada: **${resultado['Tarifa Aplicada']:,.2f}/kWh**\n\n"
+            f"Tarifa CE: **${resultado['Tarifa CE']:,.2f}/kWh**\n\n"
+            f"Facturación Tradicional: **${resultado['Total Actual']:,.0f}**\n\n"
+            f"Facturación en CE: **${resultado['Total CE']:,.0f}**\n\n"
+            f"Ahorro del mes: **${resultado['Ahorro']:,.0f}**"
         )
 
 st.markdown("---")
-
-# 6. Representacion Grafica
 st.subheader("Análisis Comparativo del Periodo")
 col_graf1, col_graf2 = st.columns(2)
-
 with col_graf1:
     fig_lineas = go.Figure()
-    fig_lineas.add_trace(go.Scatter(x=meses_labels, y=facturas_sin_ce, name="Sin CE", line=dict(color=COLOR_ACTUAL, width=3, dash='dot'), mode='lines+markers'))
-    fig_lineas.add_trace(go.Scatter(x=meses_labels, y=facturas_con_ce, name="Con CE", line=dict(color=COLOR_CE, width=4), mode='lines+markers', fill='tonexty', fillcolor='rgba(39, 174, 96, 0.2)'))
-    fig_lineas.update_layout(title="Tendencia de Facturación", xaxis_title="Periodo", yaxis_title="Valor (COP)", hovermode="x unified", legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1))
-    st.plotly_chart(fig_lineas, use_container_width=True)
+    fig_lineas.add_trace(go.Scatter(
+        x=meses_labels, y=facturas_sin_ce, name="Sin CE",
+        line=dict(color=COLOR_ACTUAL, width=3, dash="dot"), mode="lines+markers",
+    ))
+    fig_lineas.add_trace(go.Scatter(
+        x=meses_labels, y=facturas_con_ce, name="Con CE",
+        line=dict(color=COLOR_CE, width=4), mode="lines+markers",
+        fill="tonexty", fillcolor="rgba(39, 174, 96, 0.2)",
+    ))
+    fig_lineas.update_layout(
+        title="Tendencia de Facturación", xaxis_title="Periodo",
+        yaxis_title="Valor (COP)", hovermode="x unified",
+        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
+    )
+    st.plotly_chart(fig_lineas, width="stretch")
 
 with col_graf2:
-    df_barras = pd.DataFrame({"Mes": meses_labels * 2, "Escenario": ["Tradicional"] * 6 + ["Comunidad Energética"] * 6, "Costo ($)": facturas_sin_ce + facturas_con_ce})
-    fig_barras = px.bar(df_barras, x="Mes", y="Costo ($)", color="Escenario", barmode="group", color_discrete_map={"Tradicional": COLOR_ACTUAL, "Comunidad Energética": COLOR_CE}, text_auto='.2s', title="Comparación Mensual Directa")
-    fig_barras.update_layout(xaxis_title="Periodo", yaxis_title="Valor (COP)", legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1))
-    st.plotly_chart(fig_barras, use_container_width=True)
+    df_barras = pd.DataFrame({
+        "Mes": meses_labels * 2,
+        "Escenario": ["Tradicional"] * len(resultados) + ["Comunidad Energética"] * len(resultados),
+        "Costo ($)": facturas_sin_ce + facturas_con_ce,
+    })
+    fig_barras = px.bar(
+        df_barras, x="Mes", y="Costo ($)", color="Escenario", barmode="group",
+        color_discrete_map={"Tradicional": COLOR_ACTUAL, "Comunidad Energética": COLOR_CE},
+        text_auto=".2s", title="Comparación Mensual Directa",
+    )
+    fig_barras.update_layout(
+        xaxis_title="Periodo", yaxis_title="Valor (COP)",
+        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
+    )
+    st.plotly_chart(fig_barras, width="stretch")
 
 st.markdown("---")
-
-# 7. Desglose y Generación de PDF
 col_btn1, col_btn2 = st.columns(2)
-
 with col_btn1:
     st.button("Ver desglose de facturación", on_click=toggle_desglose, type="primary")
 
-def generar_pdf(datos_mensuales, reduccion_tarifa_pdf, ahorro_total_pdf):
-    pdf = FPDF()
-    pdf.add_page()
-    
-    # --- Encabezado Corporativo ---
-    pdf.set_fill_color(39, 174, 96) 
-    pdf.set_text_color(255, 255, 255)
-    pdf.set_font("Arial", 'B', 16)
-    pdf.cell(190, 15, "Reporte Comercial: Comunidad Energetica", ln=True, align='C', fill=True)
-    pdf.ln(10)
-    
-    # --- Resumen Tarifario (Enfoque Mensual) ---
-    promedio_ahorro_mensual = ahorro_total_pdf / len(datos_mensuales)
-    consumo_total_pdf = sum(res["Consumo"] for res in datos_mensuales)
-    tarifa_aplicada_pdf = sum(res["Consumo"] * res["Tarifa Aplicada"] for res in datos_mensuales) / consumo_total_pdf if consumo_total_pdf else 0
-    tarifa_ce_pdf = sum(res["Consumo"] * res["Tarifa CE"] for res in datos_mensuales) / consumo_total_pdf if consumo_total_pdf else 0
-    # Extraemos específicamente el ahorro del primer mes
-    ahorro_mes_1 = datos_mensuales[0]["Ahorro"] 
-    
-    pdf.set_text_color(44, 62, 80)
-    pdf.set_font("Arial", 'B', 14)
-    pdf.cell(190, 10, "Resumen Tarifario y Proyeccion Mensual", ln=True)
-    
-    pdf.set_font("Arial", '', 12)
-    pdf.cell(190, 8, f"Tarifa Aplicada Promedio (con contribucion): ${tarifa_aplicada_pdf:,.0f} COP/kWh", ln=True)
-    pdf.cell(190, 8, f"Tarifa Comunidad Energetica: ${tarifa_ce_pdf:,.0f} COP/kWh", ln=True)
-    
-    pdf.set_font("Arial", 'B', 12)
-    pdf.set_text_color(39, 174, 96)
-    pdf.cell(190, 8, f"Reduccion de la Tarifa: {reduccion_tarifa_pdf:.0f}%", ln=True)
-    # Mostramos el ahorro del primer mes y el promedio de los 6 meses
-    pdf.cell(190, 8, f"Ahorro Estimado (Mes 1): ${ahorro_mes_1:,.0f} COP", ln=True)
-    pdf.cell(190, 8, f"Ahorro Promedio Mensual Estimado: ${promedio_ahorro_mensual:,.0f} COP", ln=True)
-    pdf.ln(10)
-    
-    # --- Tabla de Desglose Mensual ---
-    pdf.set_text_color(44, 62, 80)
-    pdf.set_font("Arial", 'B', 12)
-    pdf.cell(190, 10, "Desglose Mensual de Consumo y Ahorro", ln=True)
-    
-    pdf.set_fill_color(230, 240, 230)
-    pdf.set_text_color(0, 0, 0)
-    pdf.set_font("Arial", 'B', 10)
-    pdf.set_font("Arial", 'B', 7)
-    pdf.cell(15, 10, "Mes", border=1, align='C', fill=True)
-    pdf.cell(22, 10, "Consumo", border=1, align='C', fill=True)
-    pdf.cell(27, 10, "Tarifa aplicada", border=1, align='C', fill=True)
-    pdf.cell(24, 10, "Tarifa CE", border=1, align='C', fill=True)
-    pdf.cell(20, 10, "Cobertura", border=1, align='C', fill=True)
-    pdf.cell(27, 10, "Tradicional", border=1, align='C', fill=True)
-    pdf.cell(27, 10, "Comunidad", border=1, align='C', fill=True)
-    pdf.cell(28, 10, "Ahorro", border=1, align='C', fill=True)
-    pdf.ln()
-    
-    pdf.set_font("Arial", '', 10)
-    for i, res in enumerate(datos_mensuales):
-        pdf.set_text_color(0, 0, 0)
-        pdf.cell(15, 10, meses_labels[i], border=1, align='C')
-        pdf.cell(22, 10, f"{res['Consumo']:,.0f}", border=1, align='C')
-        pdf.cell(27, 10, f"${res['Tarifa Aplicada']:,.0f}", border=1, align='C')
-        pdf.cell(24, 10, f"${res['Tarifa CE']:,.0f}", border=1, align='C')
-        pdf.cell(20, 10, f"{res['Cobertura CE']:,.0f}%", border=1, align='C')
-        pdf.cell(27, 10, f"${res['Total Actual']:,.0f}", border=1, align='C')
-        pdf.cell(27, 10, f"${res['Total CE']:,.0f}", border=1, align='C')
-        
-        pdf.set_text_color(39, 174, 96)
-        pdf.set_font("Arial", 'B', 10)
-        pdf.cell(28, 10, f"${res['Ahorro']:,.0f}", border=1, align='C')
-        pdf.set_font("Arial", '', 10)
+@st.cache_data(show_spinner=False)
+def generar_pdf(datos_mensuales, meses, nombre_cliente, dias_retiro):
+    pdf = FPDF(format="A4")
+    pdf.set_auto_page_break(auto=False)
+    cliente = nombre_cliente.strip() or "Cliente por definir"
+    total_tradicional = sum(resultado["Total Actual"] for resultado in datos_mensuales)
+    total_ce = sum(resultado["Total CE"] for resultado in datos_mensuales)
+    ahorro_total = sum(resultado["Ahorro"] for resultado in datos_mensuales)
+    consumo_total = sum(resultado["Consumo"] for resultado in datos_mensuales)
+    cobertura_media = (
+        sum(resultado["Consumo"] * resultado["Cobertura CE"] for resultado in datos_mensuales) / consumo_total
+        if consumo_total else 0
+    )
+    temporal_logo = tempfile.NamedTemporaryFile(delete=False, suffix=".png")
+    ruta_logo = temporal_logo.name
+    temporal_logo.close()
+    temporal_pdf = tempfile.NamedTemporaryFile(delete=False, suffix=".pdf")
+    ruta_pdf = temporal_pdf.name
+    temporal_pdf.close()
+
+    def encabezado(titulo, subtitulo):
+        pdf.set_fill_color(20, 90, 50)
+        pdf.rect(0, 0, 210, 48, style="F")
+        pdf.set_fill_color(39, 174, 96)
+        pdf.rect(183, 0, 27, 48, style="F")
+        pdf.set_fill_color(232, 245, 233)
+        pdf.rect(12, 8, 31, 31, style="F")
+        with Image.open(RUTA_IMAGEN_TITULO) as logo:
+            logo_rgba = logo.convert("RGBA")
+            fondo_logo = Image.new("RGB", logo_rgba.size, (255, 255, 255))
+            fondo_logo.paste(logo_rgba, mask=logo_rgba.getchannel("A"))
+            fondo_logo.save(ruta_logo, format="PNG")
+        pdf.image(ruta_logo, x=13, y=9, w=29, h=29)
+        pdf.set_text_color(204, 238, 216)
+        pdf.set_xy(50, 7)
+        pdf.set_font("Arial", "B", 8)
+        pdf.cell(126, 5, "ENERGÍA CENS  /  PROPUESTA COMERCIAL")
+        pdf.set_text_color(255, 255, 255)
+        pdf.set_xy(50, 14)
+        pdf.set_font("Arial", "B", 16)
+        pdf.cell(126, 9, titulo)
+        pdf.set_xy(50, 27)
+        pdf.set_font("Arial", "", 8)
+        pdf.multi_cell(126, 5, subtitulo)
+
+    def titulo_seccion(y, titulo, detalle=""):
+        pdf.set_xy(12, y)
+        pdf.set_text_color(20, 90, 50)
+        pdf.set_font("Arial", "B", 11)
+        pdf.cell(186, 6, titulo)
+        if detalle:
+            pdf.set_xy(12, y + 6)
+            pdf.set_text_color(100, 115, 106)
+            pdf.set_font("Arial", "", 7)
+            pdf.cell(186, 4, detalle)
+
+    def bloque_condicion(x, y, numero, titulo, texto):
+        pdf.set_fill_color(232, 245, 233)
+        pdf.rect(x, y, 90, 58, style="F")
+        pdf.set_fill_color(39, 174, 96)
+        pdf.ellipse(x + 4, y + 4, 8, 8, style="F")
+        pdf.set_text_color(255, 255, 255)
+        pdf.set_font("Arial", "B", 8)
+        pdf.set_xy(x + 4, y + 5)
+        pdf.cell(8, 5, str(numero), align="C")
+        pdf.set_text_color(20, 90, 50)
+        pdf.set_font("Arial", "B", 9)
+        pdf.set_xy(x + 15, y + 4)
+        pdf.cell(71, 6, titulo)
+        pdf.set_text_color(48, 65, 54)
+        pdf.set_font("Arial", "", 7.5)
+        pdf.set_xy(x + 4, y + 15)
+        pdf.multi_cell(82, 4.2, texto)
+
+    try:
+        pdf.add_page()
+        encabezado("COMUNIDAD ENERGÉTICA", f"Propuesta personalizada para: {cliente}")
+
+        tarjetas = [
+            ("COSTO SIN COMUNIDAD", total_tradicional, "$"),
+            ("COSTO CON COMUNIDAD", total_ce, "CE"),
+            ("AHORRO PROYECTADO", ahorro_total, "%"),
+        ]
+        for indice, (etiqueta, valor, icono) in enumerate(tarjetas):
+            x = 12 + indice * 63
+            pdf.set_fill_color(232, 245, 233)
+            pdf.rect(x, 54, 58, 31, style="F")
+            pdf.set_draw_color(39, 174, 96)
+            pdf.ellipse(x + 5, 58, 11, 11)
+            pdf.set_text_color(20, 90, 50)
+            pdf.set_font("Arial", "B", 7)
+            pdf.set_xy(x + 5, 61)
+            pdf.cell(11, 5, icono, align="C")
+            pdf.set_xy(x + 19, 58)
+            pdf.cell(36, 5, etiqueta)
+            if indice == 2:
+                pdf.set_text_color(39, 174, 96)
+            else:
+                pdf.set_text_color(20, 90, 50)
+            pdf.set_font("Arial", "B", 10 if indice == 2 else 9)
+            pdf.set_xy(x + 5, 72)
+            pdf.cell(49, 7, f"${valor:,.0f}", align="C")
+            pdf.set_text_color(90, 105, 96)
+            pdf.set_font("Arial", "", 6)
+            pdf.set_xy(x + 5, 79)
+            pdf.cell(49, 4, "COP  |  PROYECCIÓN SEMESTRAL", align="C")
+
+        titulo_seccion(91, "Resumen comercial de la propuesta", "Proyección semestral estimada para el consumo informado por el cliente")
+        pdf.set_xy(12, 102)
+        pdf.set_fill_color(244, 248, 245)
+        pdf.rect(12, 101, 186, 15, style="F")
+        pdf.set_text_color(48, 65, 54)
+        pdf.set_font("Arial", "", 7)
+        pdf.set_xy(16, 103)
+        pdf.multi_cell(
+            178, 4,
+            f"La propuesta vincula a {cliente} a una comunidad de suministro con energía renovable asignada según la generación disponible. El modelo proyecta un diferencial esperado del 25% en el precio de la energía asignada, una cobertura mínima de referencia del 80% y un ahorro estimado de ${ahorro_total:,.0f} COP durante seis meses, sujeto a las condiciones técnicas y contractuales.",
+        )
+        maximo = max((max(r["Total Actual"], r["Total CE"]) for r in datos_mensuales), default=0) or 1
+        eje_y = 155
+        pdf.set_draw_color(198, 211, 202)
+        pdf.line(22, eje_y, 198, eje_y)
+        pdf.set_fill_color(20, 90, 50)
+        pdf.rect(145, 120, 4, 3, style="F")
+        pdf.set_xy(151, 119)
+        pdf.set_text_color(70, 80, 74)
+        pdf.set_font("Arial", "", 6)
+        pdf.cell(22, 4, "Tradicional")
+        pdf.set_fill_color(39, 174, 96)
+        pdf.rect(175, 120, 4, 3, style="F")
+        pdf.set_xy(181, 119)
+        pdf.cell(14, 4, "CE")
+        for indice, resultado in enumerate(datos_mensuales):
+            centro = 29 + indice * 29
+            alto_actual = 29 * resultado["Total Actual"] / maximo
+            alto_ce = 29 * resultado["Total CE"] / maximo
+            pdf.set_fill_color(20, 90, 50)
+            pdf.rect(centro, eje_y - alto_actual, 8, alto_actual, style="F")
+            pdf.set_fill_color(39, 174, 96)
+            pdf.rect(centro + 10, eje_y - alto_ce, 8, alto_ce, style="F")
+            pdf.set_xy(centro - 3, eje_y + 1)
+            pdf.set_text_color(70, 80, 74)
+            pdf.set_font("Arial", "", 6)
+            pdf.cell(25, 4, meses[indice], align="C")
+
+        titulo_seccion(163, "Desglose mensual", "Facturación estimada para cada uno de los seis períodos")
+        anchos = [21, 25, 23, 28, 30, 29, 30]
+        encabezados_tabla = ["Mes", "Consumo kWh", "Cobertura", "Tarifa CE", "Tradicional", "Con CE", "Ahorro"]
+        pdf.set_xy(12, 174)
+        pdf.set_fill_color(20, 90, 50)
+        pdf.set_text_color(255, 255, 255)
+        pdf.set_font("Arial", "B", 6.5)
+        for ancho, texto in zip(anchos, encabezados_tabla):
+            pdf.cell(ancho, 7, texto, align="C", fill=True)
         pdf.ln()
-        
-    # --- Pie de página ---
-    pdf.ln(15)
-    pdf.set_text_color(127, 140, 141)
-    pdf.set_font("Arial", 'I', 8)
-    pdf.cell(190, 5, "Documento generado automaticamente.", ln=True, align='C')
-    pdf.cell(190, 5, "Esta proyeccion es una simulacion comercial; los valores finales pueden variar segun la regulacion tarifaria vigente.", ln=True, align='C')
-    
-    with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as tmp:
-        pdf.output(tmp.name)
-        with open(tmp.name, "rb") as f:
-            datos_pdf = f.read()
-    os.remove(tmp.name)
-    return datos_pdf
+        for indice, resultado in enumerate(datos_mensuales):
+            pdf.set_x(12)
+            if indice % 2 == 0:
+                pdf.set_fill_color(244, 247, 245)
+            else:
+                pdf.set_fill_color(255, 255, 255)
+            pdf.set_text_color(44, 62, 50)
+            pdf.set_font("Arial", "", 6.5)
+            valores = [
+                meses[indice], f"{resultado['Consumo']:,.0f}", f"{resultado['Cobertura CE']:,.0f}%",
+                f"${resultado['Tarifa CE']:,.0f}", f"${resultado['Total Actual']:,.0f}",
+                f"${resultado['Total CE']:,.0f}", f"${resultado['Ahorro']:,.0f}",
+            ]
+            for columna, (ancho, valor) in enumerate(zip(anchos, valores)):
+                if columna == len(anchos) - 1:
+                    pdf.set_text_color(39, 174, 96)
+                    pdf.set_font("Arial", "B", 6.5)
+                pdf.cell(ancho, 7, valor, align="C", fill=True)
+            pdf.ln()
+
+        titulo_seccion(228, "Beneficios comerciales")
+        for indice, (valor, etiqueta) in enumerate([
+            ("25%", "Diferencial sobre kWh asignado"),
+            ("80%", f"Cobertura mínima de referencia (promedio simulado: {cobertura_media:.0f}%)"),
+            ("120,268 kWh", "Consumo respaldado del proyecto / 43 usuarios"),
+        ]):
+            x = 12 + indice * 63
+            pdf.set_fill_color(232, 245, 233)
+            pdf.rect(x, 237, 58, 20, style="F")
+            pdf.set_text_color(20, 90, 50)
+            pdf.set_font("Arial", "B", 10 if indice < 2 else 9)
+            pdf.set_xy(x + 3, 238)
+            pdf.cell(52, 7, valor, align="C")
+            pdf.set_text_color(70, 85, 75)
+            pdf.set_font("Arial", "", 6)
+            pdf.set_xy(x + 3, 246)
+            pdf.multi_cell(52, 4, etiqueta, align="C")
+
+        pdf.set_xy(12, 263)
+        pdf.set_text_color(95, 108, 99)
+        pdf.set_font("Arial", "I", 7)
+        pdf.multi_cell(186, 4, "El diferencial del 25% aplica al precio de la Energía Comunitaria Asignada; no representa una reducción garantizada sobre la factura total.")
+        pdf.set_fill_color(20, 90, 50)
+        pdf.rect(0, 285, 210, 12, style="F")
+        pdf.set_text_color(255, 255, 255)
+        pdf.set_font("Arial", "", 7)
+        pdf.set_xy(12, 288)
+        pdf.cell(186, 5, "Proyección comercial semestral  |  COP  |  Comunidad Energética", align="C")
+
+        pdf.add_page()
+        encabezado("PROPUESTA COMERCIAL", f"Condiciones para: {cliente}")
+        titulo_seccion(54, "Características de la propuesta y condiciones del contrato", "Síntesis informativa basada en la minuta de suministro para usuario comercial")
+        condiciones = [
+            ("Precio y beneficio tarifario", "El precio previsto equivale al 75% de la Tarifa Aplicada por cada kWh efectivamente asignado: un diferencial esperado del 25% sobre esa energía. No garantiza una reducción del 25% en la factura total, que incluye energía no cubierta y otros componentes."),
+            ("Asignación y cobertura", "La asignación y el PDE pueden variar cada mes según generación exportada, consumos, composición de la comunidad y medición. No exceden el consumo real; el PDE individual no debe superar el 10%. La cobertura mínima del 80% del consumo base depende de energía disponible y de las condiciones técnicas, operativas y regulatorias de la minuta."),
+            ("Facturación y pago", "El cobro puede ser directo o reflejarse en la factura habilitada. Debe identificar kWh asignados, precio unitario, valor y período. Si se factura por separado, el plazo previsto es de siete (7) días hábiles desde la expedición; si se integra a otra factura, aplica el plazo de esta última."),
+            ("Continuidad del suministro", "La minuta no garantiza un volumen fijo y constante de energía mensual. Ante fallas, indisponibilidad o generación insuficiente, el usuario cubre la energía no recibida con su comercializador convencional. Una compensación por indisponibilidad imputable al generador requiere acuerdo en el ACE o anexo económico."),
+            ("Vigencia y retiro voluntario", f"La minuta prevé una vigencia inicial de ocho (8) años, con prórrogas automáticas iguales salvo aviso escrito de no renovación con treinta (30) días de anticipación. Esta propuesta indica {dias_retiro} días de preaviso para retiro voluntario; la minuta fija un mínimo de treinta (30) días, salvo plazo superior en el ACE o contrato. El retiro requiere estar al día o acordar el pago y completar los ajustes operativos."),
+            ("Medición y permanencia", "El usuario debe facilitar medición y telemedida, conservar equipos y permitir verificaciones. La minuta restringe vincularse a autogeneración u otros esquemas que desplacen materialmente el consumo sin autorización escrita. Una reducción sostenida por debajo del 70% del consumo evaluado puede dar lugar a revisión de permanencia y retiro conforme al contrato."),
+        ]
+        ubicaciones = [(12, 70), (108, 70), (12, 132), (108, 132), (12, 194), (108, 194)]
+        for indice, ((titulo, texto), (x, y)) in enumerate(zip(condiciones, ubicaciones), start=1):
+            bloque_condicion(x, y, indice, titulo, texto)
+
+        pdf.set_fill_color(20, 90, 50)
+        pdf.rect(0, 270, 210, 27, style="F")
+        pdf.set_text_color(255, 255, 255)
+        pdf.set_xy(12, 275)
+        pdf.set_font("Arial", "B", 8)
+        pdf.cell(186, 5, "NOTA IMPORTANTE")
+        pdf.set_xy(12, 281)
+        pdf.set_font("Arial", "", 7)
+        pdf.multi_cell(186, 4, "Este reporte resume una propuesta comercial y no reemplaza el contrato firmado, el ACE ni sus anexos. Las condiciones definitivas deben constar en los documentos suscritos por las partes.")
+
+        pdf.output(ruta_pdf)
+        with open(ruta_pdf, "rb") as archivo_pdf:
+            return archivo_pdf.read()
+    finally:
+        for ruta_temporal in (ruta_logo, ruta_pdf):
+            if os.path.exists(ruta_temporal):
+                os.remove(ruta_temporal)
 
 with col_btn2:
     st.download_button(
         label="Descargar Reporte en PDF",
-        data=generar_pdf(resultados, ahorro_tarifa_porcentual, total_ahorro_semestre),
+        data=generar_pdf(resultados, meses_labels, nombre_cliente, dias_retiro),
         file_name="Reporte_Comunidad_Energetica.pdf",
         mime="application/pdf",
-        type="primary"
+        type="primary",
+        on_click="ignore",
     )
 
 if st.session_state.mostrar_desglose:
     st.subheader("Análisis Detallado por Concepto (Estructura de Modelo)")
-    conceptos = ["Consumo Energía Activa", "Compra Energía Asignada CE (-)", "Cobro Energía Comunidad Energética", "Contribución", "Alumbrado Público", "TOTAL FACTURA"]
-    def formato_moneda(lista): return [f"${val:,.0f}" for val in lista]
-    
-    df_desglose = pd.DataFrame({
-        "Concepto Facturado": conceptos,
-        "Mes 1 (Sin CE)": formato_moneda(resultados[0]["Detalle Actual"]), "Mes 1 (Con CE)": formato_moneda(resultados[0]["Detalle CE"]),
-        "Mes 2 (Sin CE)": formato_moneda(resultados[1]["Detalle Actual"]), "Mes 2 (Con CE)": formato_moneda(resultados[1]["Detalle CE"]),
-        "Mes 3 (Sin CE)": formato_moneda(resultados[2]["Detalle Actual"]), "Mes 3 (Con CE)": formato_moneda(resultados[2]["Detalle CE"]),
-        "Mes 4 (Sin CE)": formato_moneda(resultados[3]["Detalle Actual"]), "Mes 4 (Con CE)": formato_moneda(resultados[3]["Detalle CE"]),
-        "Mes 5 (Sin CE)": formato_moneda(resultados[4]["Detalle Actual"]), "Mes 5 (Con CE)": formato_moneda(resultados[4]["Detalle CE"]),
-        "Mes 6 (Sin CE)": formato_moneda(resultados[5]["Detalle Actual"]), "Mes 6 (Con CE)": formato_moneda(resultados[5]["Detalle CE"]),
-    })
-    st.dataframe(df_desglose, use_container_width=True, hide_index=True)
+    conceptos = [
+        "Consumo Energía Activa", "Compra Energía Asignada CE (-)",
+        "Cobro Energía Comunidad Energética", "Contribución", "Alumbrado Público", "TOTAL FACTURA",
+    ]
+    def formato_moneda(lista):
+        return [f"${valor:,.0f}" for valor in lista]
+
+    df_desglose = pd.DataFrame({"Concepto Facturado": conceptos})
+    for indice, resultado in enumerate(resultados, start=1):
+        df_desglose[f"Mes {indice} (Sin CE)"] = formato_moneda(resultado["Detalle Actual"])
+        df_desglose[f"Mes {indice} (Con CE)"] = formato_moneda(resultado["Detalle CE"])
+    st.dataframe(df_desglose, width="stretch", hide_index=True)
