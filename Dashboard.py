@@ -364,7 +364,6 @@ st.subheader("Análisis Comparativo del Periodo")
 col_graf1, col_graf2 = st.columns(2)
 with col_graf1:
     fig_lineas = go.Figure()
-<<<<<<< HEAD
     fig_lineas.add_trace(go.Scatter(
         x=meses_labels, y=facturas_sin_ce, name="Sin CE",
         line=dict(color=COLOR_ACTUAL, width=3, dash="dot"), mode="lines+markers",
@@ -380,11 +379,6 @@ with col_graf1:
         legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
     )
     st.plotly_chart(fig_lineas, width="stretch")
-=======
-    fig_lineas.add_trace(go.Scatter(x=meses_labels, y=ahorros_mensuales, name="Ahorro por mes", line=dict(color=COLOR_CE, width=4), mode='lines+markers', fill='tozeroy', fillcolor='rgba(39, 174, 96, 0.2)', hovertemplate="<b>%{x}</b><br>Ahorro por mes: $%{y:,.0f} COP<extra></extra>"))
-    fig_lineas.update_layout(title="Ahorro por Mes", xaxis_title="Periodo", yaxis_title="Ahorro (COP)", hovermode="x unified", showlegend=False)
-    st.plotly_chart(fig_lineas, use_container_width=True)
->>>>>>> de8562a5242bc3211d36c40864411e1eb8ed9569
 
 with col_graf2:
     df_barras = pd.DataFrame({
@@ -408,7 +402,6 @@ col_btn1, col_btn2 = st.columns(2)
 with col_btn1:
     st.button("Ver desglose de facturación", on_click=toggle_desglose, type="primary")
 
-<<<<<<< HEAD
 @st.cache_data(show_spinner=False)
 def generar_pdf(datos_mensuales, meses, nombre_cliente, dias_retiro):
     pdf = FPDF(format="A4")
@@ -563,77 +556,6 @@ def generar_pdf(datos_mensuales, meses, nombre_cliente, dias_retiro):
         pdf.set_font("Arial", "B", 6.5)
         for ancho, texto in zip(anchos, encabezados_tabla):
             pdf.cell(ancho, 7, texto, align="C", fill=True)
-=======
-def generar_pdf(datos_mensuales, reduccion_tarifa_pdf, ahorro_total_pdf):
-    pdf = FPDF()
-    pdf.add_page()
-    
-    # --- Encabezado Corporativo ---
-    pdf.set_fill_color(39, 174, 96) 
-    pdf.set_text_color(255, 255, 255)
-    pdf.set_font("Arial", 'B', 16)
-    pdf.cell(190, 15, "Reporte Comercial: Comunidad Energetica", ln=True, align='C', fill=True)
-    pdf.ln(10)
-    
-    # --- Resumen Tarifario (Enfoque Mensual) ---
-    promedio_ahorro_mensual = ahorro_total_pdf / len(datos_mensuales)
-    consumo_total_pdf = sum(res["Consumo"] for res in datos_mensuales)
-    tarifa_aplicada_pdf = sum(res["Consumo"] * res["Tarifa Aplicada"] for res in datos_mensuales) / consumo_total_pdf if consumo_total_pdf else 0
-    tarifa_ce_pdf = sum(res["Consumo"] * res["Tarifa CE"] for res in datos_mensuales) / consumo_total_pdf if consumo_total_pdf else 0
-    # Extraemos específicamente el ahorro del primer mes
-    ahorro_mes_1 = datos_mensuales[0]["Ahorro"] 
-    
-    pdf.set_text_color(44, 62, 80)
-    pdf.set_font("Arial", 'B', 14)
-    pdf.cell(190, 10, "Resumen Tarifario y Proyeccion Mensual", ln=True)
-    
-    pdf.set_font("Arial", '', 12)
-    pdf.cell(190, 8, f"Tarifa Aplicada Promedio (con contribucion): ${tarifa_aplicada_pdf:,.0f} COP/kWh", ln=True)
-    pdf.cell(190, 8, f"Tarifa Promedio Comunidad Energetica: ${tarifa_ce_pdf:,.0f} COP/kWh", ln=True)
-    
-    pdf.set_font("Arial", 'B', 12)
-    pdf.set_text_color(39, 174, 96)
-    pdf.cell(190, 8, f"Reduccion de la Tarifa: {reduccion_tarifa_pdf:.0f}%", ln=True)
-    # Mostramos el ahorro del primer mes y el promedio de los 6 meses
-    pdf.cell(190, 8, f"Ahorro Estimado (Mes 1): ${ahorro_mes_1:,.0f} COP", ln=True)
-    pdf.cell(190, 8, f"Ahorro Promedio Mensual Estimado: ${promedio_ahorro_mensual:,.0f} COP", ln=True)
-    pdf.ln(10)
-    
-    # --- Tabla de Desglose Mensual ---
-    pdf.set_text_color(44, 62, 80)
-    pdf.set_font("Arial", 'B', 12)
-    pdf.cell(190, 10, "Desglose Mensual de Consumo y Ahorro", ln=True)
-    
-    pdf.set_fill_color(230, 240, 230)
-    pdf.set_text_color(0, 0, 0)
-    pdf.set_font("Arial", 'B', 10)
-    pdf.set_font("Arial", 'B', 7)
-    pdf.cell(15, 10, "Mes", border=1, align='C', fill=True)
-    pdf.cell(22, 10, "Consumo", border=1, align='C', fill=True)
-    pdf.cell(27, 10, "Tarifa aplicada", border=1, align='C', fill=True)
-    pdf.cell(24, 10, "Tarifa CE", border=1, align='C', fill=True)
-    pdf.cell(20, 10, "Cobertura", border=1, align='C', fill=True)
-    pdf.cell(27, 10, "Tradicional", border=1, align='C', fill=True)
-    pdf.cell(27, 10, "Comunidad", border=1, align='C', fill=True)
-    pdf.cell(28, 10, "Ahorro", border=1, align='C', fill=True)
-    pdf.ln()
-    
-    pdf.set_font("Arial", '', 10)
-    for i, res in enumerate(datos_mensuales):
-        pdf.set_text_color(0, 0, 0)
-        pdf.cell(15, 10, meses_labels[i], border=1, align='C')
-        pdf.cell(22, 10, f"{res['Consumo']:,.0f}", border=1, align='C')
-        pdf.cell(27, 10, f"${res['Tarifa Aplicada']:,.0f}", border=1, align='C')
-        pdf.cell(24, 10, f"${res['Tarifa CE']:,.0f}", border=1, align='C')
-        pdf.cell(20, 10, f"{res['Cobertura CE']:,.0f}%", border=1, align='C')
-        pdf.cell(27, 10, f"${res['Total Actual']:,.0f}", border=1, align='C')
-        pdf.cell(27, 10, f"${res['Total CE']:,.0f}", border=1, align='C')
-        
-        pdf.set_text_color(39, 174, 96)
-        pdf.set_font("Arial", 'B', 10)
-        pdf.cell(28, 10, f"${res['Ahorro']:,.0f}", border=1, align='C')
-        pdf.set_font("Arial", '', 10)
->>>>>>> de8562a5242bc3211d36c40864411e1eb8ed9569
         pdf.ln()
         for indice, resultado in enumerate(datos_mensuales):
             pdf.set_x(12)
