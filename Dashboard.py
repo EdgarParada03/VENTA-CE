@@ -536,12 +536,32 @@ def generar_pdf(datos_mensuales, meses, nombre_cliente, dias_retiro):
         pdf.cell(14, 4, "CE")
         for indice, resultado in enumerate(datos_mensuales):
             centro = 29 + indice * 29
-            alto_actual = 29 * resultado["Total Actual"] / maximo
-            alto_ce = 29 * resultado["Total CE"] / maximo
+            alto_actual = 21 * resultado["Total Actual"] / maximo
+            alto_ce = 21 * resultado["Total CE"] / maximo
             pdf.set_fill_color(20, 90, 50)
             pdf.rect(centro, eje_y - alto_actual, 8, alto_actual, style="F")
             pdf.set_fill_color(39, 174, 96)
             pdf.rect(centro + 10, eje_y - alto_ce, 8, alto_ce, style="F")
+            pdf.set_text_color(48, 65, 54)
+            pdf.set_font("Arial", "B", 4)
+            pdf.set_xy(centro - 6, eje_y - alto_actual - 2.5)
+            pdf.cell(20, 3, f"${resultado['Total Actual']:,.0f}", align="C")
+            pdf.set_xy(centro + 4, eje_y - alto_ce - 2.5)
+            pdf.cell(20, 3, f"${resultado['Total CE']:,.0f}", align="C")
+
+            ahorro_es_positivo = resultado["Ahorro"] >= 0
+            x_barra_menor = centro + (10 if ahorro_es_positivo else 0)
+            alto_barra_menor = min(alto_actual, alto_ce)
+            y_barra_menor = eje_y - alto_barra_menor
+            pdf.set_draw_color(39, 174, 96)
+            pdf.set_line_width(0.6)
+            pdf.line(x_barra_menor - 1, y_barra_menor - 8, x_barra_menor + 9, y_barra_menor - 8)
+            pdf.set_text_color(20, 90, 50)
+            pdf.set_font("Arial", "B", 4)
+            pdf.set_xy(centro - 5, y_barra_menor - 11)
+            etiqueta_ahorro = "AHORRO" if ahorro_es_positivo else "COSTO EXTRA"
+            pdf.cell(26, 3, f"{etiqueta_ahorro} ${abs(resultado['Ahorro']):,.0f}", align="C")
+
             pdf.set_xy(centro - 3, eje_y + 1)
             pdf.set_text_color(70, 80, 74)
             pdf.set_font("Arial", "", 6)
@@ -581,7 +601,7 @@ def generar_pdf(datos_mensuales, meses, nombre_cliente, dias_retiro):
         for indice, (valor, etiqueta) in enumerate([
             ("25%", "Diferencial sobre kWh asignado"),
             ("80%", f"Cobertura mínima de referencia (promedio simulado: {cobertura_media:.0f}%)"),
-            ("120,268 kWh", "Consumo respaldado del proyecto / 43 usuarios"),
+            ("120,268 kWh", "Consumo respaldado del proyecto"),
         ]):
             x = 12 + indice * 63
             pdf.set_fill_color(232, 245, 233)
