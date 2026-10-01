@@ -458,24 +458,6 @@ def generar_pdf(datos_mensuales, meses, nombre_cliente, dias_retiro):
             pdf.set_font("Arial", "", 7)
             pdf.cell(186, 4, detalle)
 
-    def bloque_condicion(x, y, numero, titulo, texto):
-        pdf.set_fill_color(232, 245, 233)
-        pdf.rect(x, y, 90, 58, style="F")
-        pdf.set_fill_color(39, 174, 96)
-        pdf.ellipse(x + 4, y + 4, 8, 8, style="F")
-        pdf.set_text_color(255, 255, 255)
-        pdf.set_font("Arial", "B", 8)
-        pdf.set_xy(x + 4, y + 5)
-        pdf.cell(8, 5, str(numero), align="C")
-        pdf.set_text_color(20, 90, 50)
-        pdf.set_font("Arial", "B", 9)
-        pdf.set_xy(x + 15, y + 4)
-        pdf.cell(71, 6, titulo)
-        pdf.set_text_color(48, 65, 54)
-        pdf.set_font("Arial", "", 7.5)
-        pdf.set_xy(x + 4, y + 15)
-        pdf.multi_cell(82, 4.2, texto)
-
     try:
         pdf.add_page()
         encabezado("COMUNIDAD ENERGÉTICA", f"Propuesta personalizada para: {cliente}")
@@ -625,31 +607,6 @@ def generar_pdf(datos_mensuales, meses, nombre_cliente, dias_retiro):
         pdf.set_font("Arial", "", 7)
         pdf.set_xy(12, 288)
         pdf.cell(186, 5, "Proyección comercial semestral  |  COP  |  Comunidad Energética", align="C")
-
-        pdf.add_page()
-        encabezado("PROPUESTA COMERCIAL", f"Condiciones para: {cliente}")
-        titulo_seccion(54, "Características de la propuesta y condiciones del contrato", "Síntesis informativa basada en la minuta de suministro para usuario comercial")
-        condiciones = [
-            ("Precio y beneficio tarifario", "El precio previsto equivale al 75% de la Tarifa Aplicada por cada kWh efectivamente asignado: un diferencial esperado del 25% sobre esa energía. No garantiza una reducción del 25% en la factura total, que incluye energía no cubierta y otros componentes."),
-            ("Asignación y cobertura", "La asignación y el PDE pueden variar cada mes según generación exportada, consumos, composición de la comunidad y medición. No exceden el consumo real; el PDE individual no debe superar el 10%. La cobertura mínima del 80% del consumo base depende de energía disponible y de las condiciones técnicas, operativas y regulatorias de la minuta."),
-            ("Facturación y pago", "El cobro puede ser directo o reflejarse en la factura habilitada. Debe identificar kWh asignados, precio unitario, valor y período. Si se factura por separado, el plazo previsto es de siete (7) días hábiles desde la expedición; si se integra a otra factura, aplica el plazo de esta última."),
-            ("Continuidad del suministro", "La minuta no garantiza un volumen fijo y constante de energía mensual. Ante fallas, indisponibilidad o generación insuficiente, el usuario cubre la energía no recibida con su comercializador convencional. Una compensación por indisponibilidad imputable al generador requiere acuerdo en el ACE o anexo económico."),
-            ("Vigencia y retiro voluntario", f"La minuta prevé una vigencia inicial de ocho (8) años, con prórrogas automáticas iguales salvo aviso escrito de no renovación con treinta (30) días de anticipación. Esta propuesta indica {dias_retiro} días de preaviso para retiro voluntario; la minuta fija un mínimo de treinta (30) días, salvo plazo superior en el ACE o contrato. El retiro requiere estar al día o acordar el pago y completar los ajustes operativos."),
-            ("Medición y permanencia", "El usuario debe facilitar medición y telemedida, conservar equipos y permitir verificaciones. La minuta restringe vincularse a autogeneración u otros esquemas que desplacen materialmente el consumo sin autorización escrita. Una reducción sostenida por debajo del 70% del consumo evaluado puede dar lugar a revisión de permanencia y retiro conforme al contrato."),
-        ]
-        ubicaciones = [(12, 70), (108, 70), (12, 132), (108, 132), (12, 194), (108, 194)]
-        for indice, ((titulo, texto), (x, y)) in enumerate(zip(condiciones, ubicaciones), start=1):
-            bloque_condicion(x, y, indice, titulo, texto)
-
-        pdf.set_fill_color(20, 90, 50)
-        pdf.rect(0, 270, 210, 27, style="F")
-        pdf.set_text_color(255, 255, 255)
-        pdf.set_xy(12, 275)
-        pdf.set_font("Arial", "B", 8)
-        pdf.cell(186, 5, "NOTA IMPORTANTE")
-        pdf.set_xy(12, 281)
-        pdf.set_font("Arial", "", 7)
-        pdf.multi_cell(186, 4, "Este reporte resume una propuesta comercial y no reemplaza el contrato firmado, el ACE ni sus anexos. Las condiciones definitivas deben constar en los documentos suscritos por las partes.")
 
         pdf.output(ruta_pdf)
         with open(ruta_pdf, "rb") as archivo_pdf:
